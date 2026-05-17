@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BICIU Export</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    margin: 0;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { color: #ff9020; margin-bottom: 8px; font-size: 26px; }
+  .subtitle { color: #888; margin-bottom: 24px; font-size: 14px; }
+  .card {
+    background: #232323;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  button {
+    background: #ff9020;
+    color: #1a1a1a;
+    border: none;
+    border-radius: 6px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 8px;
+    margin-bottom: 8px;
+  }
+  button:hover:not(:disabled) { background: #ffaa50; }
+  button:disabled { background: #555; color: #888; cursor: not-allowed; }
+  button.secondary { background: #444; color: #e0e0e0; }
+  button.secondary:hover:not(:disabled) { background: #555; }
+  button.success { background: #4CAF50; color: white; }
+  button.success:hover:not(:disabled) { background: #5DBF60; }
+  button.excel { background: #1d6f42; color: white; }
+  button.excel:hover:not(:disabled) { background: #2d8f52; }
+  .status {
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 12px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .status.info { background: #1e3a5f; color: #88c0ff; }
+  .status.ok { background: #1e3a1e; color: #88dd88; }
+  .status.err { background: #5f1e1e; color: #ff8888; }
+  .status.wait { background: #3a3a1e; color: #ffdd88; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #333; }
+  th { background: #2a2a2a; color: #ff9020; }
+  td.num { text-align: right; }
+  .preview-wrap {
+    max-height: 300px;
+    overflow: auto;
+    border: 1px solid #333;
+    border-radius: 6px;
+    margin-top: 12px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+  }
+  .stat-row:last-child { border: none; }
+  .stat-label { color: #888; }
+  .stat-value { color: #fff; font-weight: 600; }
+  .nosupport {
+    background: #5f1e1e;
+    color: #ffaaaa;
+    padding: 16px;
+    border-radius: 6px;
+    margin: 12px 0;
+  }
+  code {
+    background: #2a2a2a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #ffaa50;
+  }
+  .chart-wrap {
+    background: #2a2a2a;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+    height: 220px;
+    position: relative;
+  }
+  .chart-wrap.tall { height: 340px; }
+  .chart-title {
+    color: #ff9020;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🚴 BICIU Export</h1>
+  <div class="subtitle">Scarica log + marker e visualizza i grafici del giro</div>
+
+  <div id="nosupport" class="nosupport" style="display:none">
+    ⚠️ Il tuo browser non supporta Web Serial API.<br>
+    Usa <strong>Chrome</strong>, <strong>Edge</strong> oppure <strong>Opera</strong> (anche Android con cavo OTG).
+    Safari (iPhone/iPad) e Firefox non sono supportati.
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">1. Collega la centralina</h3>
+    <p style="color:#aaa; font-size:14px;">Attacca il cavo USB-C alla centralina e premi il pulsante.</p>
+    <button id="btnConnect">🔌 Collega centralina</button>
+    <button id="btnDisconnect" class="secondary" disabled>Disconnetti</button>
+    <div id="connStatus" class="status info" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. Avvia export sulla centralina</h3>
+    <p style="color:#aaa; font-size:14px;">
+      Sulla centralina vai in: <code>Menu → Sistema → Esporta dati</code><br>
+      Premi quando sei pronto:
+    </p>
+    <button id="btnListen" disabled>📥 Attendi dati</button>
+    <div id="listenStatus" class="status info" style="display:none"></div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none">
+    <h3 style="margin-top:0">3. Dati ricevuti</h3>
+    <div id="stats"></div>
+    <div style="margin-top:12px">
+      <button id="btnDownload" class="success">💾 Scarica CSV</button>
+      <button id="btnDownloadMarkers" class="success">💾 Scarica Marker CSV</button>
+      <button id="btnDownloadXlsx" class="excel">📊 Scarica Excel con grafici</button>
+      <button id="btnDownloadRaw" class="secondary">🔍 Scarica file debug (raw)</button>
+    </div>
+    <div class="preview-wrap">
+      <table id="preview"></table>
+    </div>
+  </div>
+
+  <div class="card" id="chartsCard" style="display:none">
+    <h3 style="margin-top:0">4. Grafici del giro</h3>
+    <p style="color:#aaa; font-size:13px;">Asse x: minuti dall'inizio del giro. Linee gialle tratteggiate = marker.</p>
+
+    <div class="chart-title">🏔 Altitudine (m)</div>
+    <div class="chart-wrap"><canvas id="chartAlt"></canvas></div>
+
+    <div class="chart-title">🌡 Pressione (mBar)</div>
+    <div class="chart-wrap"><canvas id="chartPrs"></canvas></div>
+
+    <div class="chart-title">🚴 Velocità (km/h)</div>
+    <div class="chart-wrap"><canvas id="chartSpd"></canvas></div>
+
+    <div class="chart-title">📐 Pitching (°)</div>
+    <div class="chart-wrap"><canvas id="chartPtc"></canvas></div>
+
+    <div class="chart-title">📊 Tutti i parametri sovrapposti</div>
+    <div class="chart-wrap tall"><canvas id="chartAll"></canvas></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============ CARICAMENTO LIBRERIE NON BLOCCANTE ============
+// Le librerie esterne (Chart.js, ExcelJS) sono caricate da CDN. Se il CDN è
+// irraggiungibile (offline, firewall, ecc), la pagina deve comunque permettere
+// di scaricare i CSV. Le librerie sono "nice to have" non "must have".
+let libChartReady = false;
+let libExcelReady = false;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(src);
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+// Carico in parallelo, ma senza bloccare il resto del codice
+loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js')
+  .then(() => { libChartReady = true; console.log('[BICIU] Chart.js caricato'); })
+  .catch(err => console.warn('[BICIU] Chart.js NON caricato:', err.message));
+loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js')
+  .then(() => { libExcelReady = true; console.log('[BICIU] ExcelJS caricato'); })
+  .catch(err => console.warn('[BICIU] ExcelJS NON caricato:', err.message));
+
+let port = null;
+let reader = null;
+let readBuffer = '';
+let rawText = '';
+let parsedData = null;
+let listening = false;
+let chartInstances = {};
+
+const COL_ALT  = '#3DDC97';
+const COL_PRS  = '#54BFEE';
+const COL_SPD  = '#07E0FF';
+const COL_PTC  = '#FD9020';
+const COL_MARK = '#FFEA00';
+
+const $ = (id) => document.getElementById(id);
+function setStatus(id, msg, kind = 'info') {
+  const el = $(id);
+  el.style.display = 'block';
+  el.className = 'status ' + kind;
+  el.textContent = msg;
+}
+
+if (!('serial' in navigator)) {
+  $('nosupport').style.display = 'block';
+  $('btnConnect').disabled = true;
+}
+
+$('btnConnect').onclick = async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    setStatus('connStatus', '✓ Centralina collegata. Pronta a ricevere.', 'ok');
+    $('btnConnect').disabled = true;
+    $('btnDisconnect').disabled = false;
+    $('btnListen').disabled = false;
+  } catch (err) {
+    if (err.name === 'NotFoundError') {
+      setStatus('connStatus', 'Nessuna porta selezionata.', 'info');
+    } else {
+      setStatus('connStatus', '❌ Errore: ' + err.message, 'err');
+    }
+  }
+};
+
+$('btnDisconnect').onclick = async () => {
+  listening = false;
+  if (reader) {
+    try { await reader.cancel(); } catch(e) {}
+    try { reader.releaseLock(); } catch(e) {}
+    reader = null;
+  }
+  if (port) {
+    try { await port.close(); } catch(e) {}
+    port = null;
+  }
+  setStatus('connStatus', 'Disconnesso.', 'info');
+  $('btnConnect').disabled = false;
+  $('btnDisconnect').disabled = true;
+  $('btnListen').disabled = true;
+};
+
+$('btnListen').onclick = async () => {
+  if (!port) return;
+  listening = true;
+  readBuffer = '';
+  setStatus('listenStatus', '⏳ In attesa di dati...\nAvvia "Esporta dati" dalla centralina ora.', 'wait');
+  $('btnListen').disabled = true;
+  try {
+    const decoder = new TextDecoderStream();
+    const inputDone = port.readable.pipeTo(decoder.writable);
+    const inputStream = decoder.readable;
+    reader = inputStream.getReader();
+    while (listening) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      readBuffer += value;
+      if (readBuffer.includes('<BICIU_EXPORT_END>')) {
+        const startIdx = readBuffer.indexOf('<BICIU_EXPORT_START>');
+        const endIdx = readBuffer.indexOf('<BICIU_EXPORT_END>');
+        if (startIdx >= 0 && endIdx > startIdx) {
+          const payload = readBuffer.substring(startIdx, endIdx);
+          rawText = readBuffer;
+          parsedData = parsePayload(payload);
+          showResults();
+          listening = false;
+          break;
+        }
+      } else if (readBuffer.length > 500000) {
+        rawText = readBuffer;
+        $('resultsCard').style.display = 'block';
+        $('btnDownload').style.display = 'none';
+        $('btnDownloadMarkers').style.display = 'none';
+        $('btnDownloadXlsx').style.display = 'none';
+        $('stats').innerHTML = '<div style="color:#ff8888">⚠ Marker di fine non trovato.</div>';
+        setStatus('listenStatus', '❌ Troppi dati senza marker di fine.', 'err');
+        listening = false;
+        break;
+      }
+    }
+  } catch (err) {
+    if (listening) setStatus('listenStatus', '❌ Errore lettura: ' + err.message, 'err');
+  } finally {
+    if (reader) {
+      try { reader.releaseLock(); } catch(e) {}
+      reader = null;
+    }
+    $('btnListen').disabled = !port;
+  }
+};
+
+function parsePayload(text) {
+  const lines = text.split(/\r?\n/);
+  const blocks = {};
+  const meta = {};
+  let currentBlock = null;
+  let currentArr = null;
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (line.startsWith('<BICIU_EXPORT_START>')) continue;
+    const m = line.match(/^===\s*(.+?)\s*===$/);
+    if (m) {
+      currentBlock = m[1];
+      currentArr = [];
+      blocks[currentBlock] = currentArr;
+      continue;
+    }
+    if (currentBlock === null) {
+      if (!line) continue;
+      if (line.includes('=')) {
+        const [k, v] = line.split('=');
+        meta[k.trim()] = v.trim();
+      }
+      continue;
+    }
+    if (currentArr) currentArr.push(line);
+  }
+  for (const k in blocks) {
+    const arr = blocks[k];
+    while (arr.length > 0 && arr[arr.length - 1] === '') arr.pop();
+  }
+  const nRecords = parseInt(meta.RECORDS || '0');
+  if (blocks.MARKER && nRecords > 0) {
+    while (blocks.MARKER.length < nRecords) blocks.MARKER.push('');
+  }
+  return { meta, blocks };
+}
+
+function showResults() {
+  if (!parsedData) return;
+  const { meta, blocks } = parsedData;
+  setStatus('listenStatus', '✓ Dati ricevuti correttamente.', 'ok');
+  $('resultsCard').style.display = 'block';
+  const fw = meta.FW || '?';
+  const nLog = parseInt(meta.RECORDS || '0');
+  const nMarker = parseInt(meta.MARKERS || '0');
+  $('stats').innerHTML = `
+    <div class="stat-row"><span class="stat-label">Firmware</span><span class="stat-value">v${fw}</span></div>
+    <div class="stat-row"><span class="stat-label">Record log</span><span class="stat-value">${nLog}</span></div>
+    <div class="stat-row"><span class="stat-label">Marker</span><span class="stat-value">${nMarker}</span></div>
+  `;
+  renderPreview();
+  renderCharts();
+}
+
+function renderPreview() {
+  const { blocks } = parsedData;
+  const cols = ['INDEX','MIN','ALTITUDINE_M','PRESSIONE_MBAR','VELOCITA_KMH','PITCH_DEG','MARKER'];
+  const headers = ['Idx','Min','Alt (m)','Pres (mBar)','Vel (km/h)','Pitch (°)','Marker'];
+  let html = '<thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  const nRows = Math.max(...cols.map(c => (blocks[c] || []).length));
+  const preview = Math.min(20, nRows);
+  for (let i = 0; i < preview; i++) {
+    html += '<tr>';
+    for (const c of cols) {
+      const arr = blocks[c] || [];
+      const v = arr[i] !== undefined ? arr[i] : '';
+      const isNum = c !== 'MARKER';
+      html += `<td${isNum ? ' class="num"' : ''}>${v}</td>`;
+    }
+    html += '</tr>';
+  }
+  if (nRows > preview) {
+    html += `<tr><td colspan="${cols.length}" style="text-align:center;color:#888;font-style:italic;">... e altre ${nRows - preview} righe</td></tr>`;
+  }
+  html += '</tbody>';
+  $('preview').innerHTML = html;
+}
+
+// ============ CHARTS ============
+function extractData() {
+  const { blocks, meta } = parsedData;
+  const nRows = parseInt(meta.RECORDS || '0');
+  const mins = []; const alt = []; const prs = []; const spd = []; const ptc = [];
+  const markers = [];
+  for (let i = 0; i < nRows; i++) {
+    const m = parseFloat((blocks.MIN || [])[i]);
+    mins.push(isFinite(m) ? m : i);
+    alt.push(parseFloat((blocks.ALTITUDINE_M || [])[i]) || null);
+    prs.push(parseFloat((blocks.PRESSIONE_MBAR || [])[i]) || null);
+    spd.push(parseFloat((blocks.VELOCITA_KMH || [])[i]) || null);
+    ptc.push(parseFloat((blocks.PITCH_DEG || [])[i]) || null);
+    const mk = ((blocks.MARKER || [])[i] || '').trim();
+    if (mk) markers.push({ min: mins[i], label: mk, idx: i });
+  }
+  return { mins, alt, prs, spd, ptc, markers };
+}
+
+function destroyAllCharts() {
+  for (const k in chartInstances) {
+    try { chartInstances[k].destroy(); } catch(e) {}
+  }
+  chartInstances = {};
+}
+
+function makeMarkerLines(markers) {
+  // v2: invece di dataset finti con y=+/-1e9 (che sballavano la scala y),
+  // uso un plugin Chart.js inline che disegna le linee verticali a posteriori,
+  // sopra il grafico già renderizzato. Non influenza il calcolo auto-scale.
+  return {
+    id: 'markerLines',
+    afterDatasetsDraw(chart) {
+      if (!markers || markers.length === 0) return;
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      if (!xScale) return;
+      ctx.save();
+      ctx.strokeStyle = COL_MARK;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      for (const m of markers) {
+        const px = xScale.getPixelForValue(m.min);
+        if (px < chartArea.left || px > chartArea.right) continue;
+        ctx.beginPath();
+        ctx.moveTo(px, chartArea.top);
+        ctx.lineTo(px, chartArea.bottom);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  };
+}
+
+function chartCommonOptions(yLabel, yColor) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    parsing: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1a1a',
+        titleColor: '#ff9020',
+        bodyColor: '#e0e0e0',
+        borderColor: '#333',
+        borderWidth: 1,
+      },
+    },
+    scales: {
+      x: {
+        type: 'linear',
+        title: { display: true, text: 'Minuti', color: '#888' },
+        ticks: { color: '#aaa' },
+        grid: { color: '#333' },
+      },
+      y: {
+        title: { display: true, text: yLabel, color: yColor },
+        ticks: { color: '#aaa' },
+        grid: { color: '#333' },
+      },
+    },
+  };
+}
+
+function makeChart(canvasId, label, color, xs, ys, markers, yLabel) {
+  const ctx = $(canvasId).getContext('2d');
+  const data = xs.map((x, i) => ({ x, y: ys[i] })).filter(p => p.y !== null);
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label, data,
+        borderColor: color,
+        backgroundColor: color + '33',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2,
+      }],
+    },
+    options: chartCommonOptions(yLabel, color),
+    plugins: [makeMarkerLines(markers)],
+  });
+}
+
+function renderCharts() {
+  if (!libChartReady || typeof Chart === 'undefined') {
+    console.warn('[BICIU] Chart.js non disponibile, salto i grafici.');
+    return;
+  }
+  destroyAllCharts();
+  $('chartsCard').style.display = 'block';
+  const { mins, alt, prs, spd, ptc, markers } = extractData();
+
+  chartInstances.alt = makeChart('chartAlt', 'Altitudine', COL_ALT, mins, alt, markers, 'm');
+  chartInstances.prs = makeChart('chartPrs', 'Pressione',  COL_PRS, mins, prs, markers, 'mBar');
+  chartInstances.spd = makeChart('chartSpd', 'Velocità',   COL_SPD, mins, spd, markers, 'km/h');
+  chartInstances.ptc = makeChart('chartPtc', 'Pitch',      COL_PTC, mins, ptc, markers, '°');
+
+  // Grafico unificato: 4 assi y separati
+  const allCtx = $('chartAll').getContext('2d');
+  const dataAlt = mins.map((x, i) => ({ x, y: alt[i] })).filter(p => p.y !== null);
+  const dataPrs = mins.map((x, i) => ({ x, y: prs[i] })).filter(p => p.y !== null);
+  const dataSpd = mins.map((x, i) => ({ x, y: spd[i] })).filter(p => p.y !== null);
+  const dataPtc = mins.map((x, i) => ({ x, y: ptc[i] })).filter(p => p.y !== null);
+
+  chartInstances.all = new Chart(allCtx, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'Altitudine (m)',   data: dataAlt, borderColor: COL_ALT, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, yAxisID: 'yAlt' },
+        { label: 'Pressione (mBar)', data: dataPrs, borderColor: COL_PRS, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, yAxisID: 'yPrs' },
+        { label: 'Velocità (km/h)',  data: dataSpd, borderColor: COL_SPD, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, yAxisID: 'ySpd' },
+        { label: 'Pitch (°)',        data: dataPtc, borderColor: COL_PTC, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, yAxisID: 'yPtc' },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#e0e0e0' },
+        },
+        tooltip: {
+          backgroundColor: '#1a1a1a',
+          titleColor: '#ff9020',
+          bodyColor: '#e0e0e0',
+          borderColor: '#333',
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x:    { type: 'linear', title: { display: true, text: 'Minuti', color: '#888' }, ticks: { color: '#aaa' }, grid: { color: '#333' } },
+        yAlt: { type: 'linear', position: 'left',  title: { display: true, text: 'Alt (m)',     color: COL_ALT }, ticks: { color: COL_ALT }, grid: { color: '#333' } },
+        yPrs: { type: 'linear', position: 'left',  title: { display: true, text: 'Pres (mBar)', color: COL_PRS }, ticks: { color: COL_PRS }, grid: { drawOnChartArea: false } },
+        ySpd: { type: 'linear', position: 'right', title: { display: true, text: 'Vel (km/h)',  color: COL_SPD }, ticks: { color: COL_SPD }, grid: { drawOnChartArea: false } },
+        yPtc: { type: 'linear', position: 'right', title: { display: true, text: 'Pitch (°)',   color: COL_PTC }, ticks: { color: COL_PTC }, grid: { drawOnChartArea: false } },
+      },
+    },
+    plugins: [makeMarkerLines(markers)],
+  });
+}
+
+// ============ DOWNLOAD CSV ============
+$('btnDownload').onclick = () => {
+  if (!parsedData) return;
+  const { blocks } = parsedData;
+  const cols = ['INDEX','MIN','ALTITUDINE_M','PRESSIONE_MBAR','VELOCITA_KMH','PITCH_DEG','MARKER'];
+  const headers = ['Index','Min','Altitudine_m','Pressione_mBar','Velocita_kmh','Pitch_deg','Marker'];
+  const nRows = Math.max(...cols.map(c => (blocks[c] || []).length));
+  let csv = headers.join(';') + '\n';
+  for (let i = 0; i < nRows; i++) {
+    const row = cols.map(c => {
+      const arr = blocks[c] || [];
+      return arr[i] !== undefined ? arr[i] : '';
+    });
+    csv += row.join(';') + '\n';
+  }
+  downloadFile('biciu_log.csv', csv);
+};
+
+$('btnDownloadMarkers').onclick = () => {
+  if (!parsedData) return;
+  const { blocks } = parsedData;
+  const cols = ['MARKER_INDEX','MARKER_LOGINDEX','MARKER_TEMPOTRIP_S','MARKER_TIPO'];
+  const headers = ['Index','LogIndex','TempoTrip_s','Tipo'];
+  const nRows = Math.max(...cols.map(c => (blocks[c] || []).length));
+  if (nRows === 0) { alert('Nessun marker da esportare.'); return; }
+  let csv = headers.join(';') + '\n';
+  for (let i = 0; i < nRows; i++) {
+    const row = cols.map(c => {
+      const arr = blocks[c] || [];
+      return arr[i] !== undefined ? arr[i] : '';
+    });
+    csv += row.join(';') + '\n';
+  }
+  downloadFile('biciu_marker.csv', csv);
+};
+
+$('btnDownloadRaw').onclick = () => {
+  if (!rawText || rawText.length === 0) { alert('Nessun dato grezzo disponibile.'); return; }
+  const header = '=== BICIU DEBUG RAW DUMP ===\n' +
+                 'Lunghezza: ' + rawText.length + ' caratteri\n' +
+                 'Browser: ' + navigator.userAgent + '\n' +
+                 'Data: ' + new Date().toISOString() + '\n' +
+                 '=== INIZIO DUMP ===\n';
+  const footer = '\n=== FINE DUMP ===\n';
+  downloadFile('biciu_raw.txt', header + rawText + footer);
+};
+
+// ============ EXCEL CON GRAFICI ============
+// Strategia: Excel nativo non supporta facilmente chart programmatici via ExcelJS,
+// quindi rendo i grafici di Chart.js come immagini PNG e le incorporo nello sheet.
+// Risultato visivamente identico, anche se non sono "veri grafici Excel" modificabili.
+
+$('btnDownloadXlsx').onclick = async () => {
+  if (!parsedData) { alert('Nessun dato'); return; }
+  if (!libExcelReady || typeof ExcelJS === 'undefined') {
+    alert('Libreria Excel non caricata (connessione internet?). Puoi comunque scaricare il CSV.');
+    return;
+  }
+  const btn = $('btnDownloadXlsx');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Generazione...';
+  try {
+    await generateExcel();
+  } catch (err) {
+    console.error(err);
+    alert('Errore generazione Excel: ' + err.message);
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+};
+
+async function generateExcel() {
+  const { mins, alt, prs, spd, ptc, markers } = extractData();
+  const { meta, blocks } = parsedData;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'BICIU Export';
+  workbook.created = new Date();
+
+  // ─── Sheet Log ───
+  const wsLog = workbook.addWorksheet('Log');
+  wsLog.columns = [
+    { header: 'Index',           key: 'idx', width: 8  },
+    { header: 'Min',             key: 'min', width: 8  },
+    { header: 'Altitudine (m)',  key: 'alt', width: 14 },
+    { header: 'Pressione (mBar)',key: 'prs', width: 16 },
+    { header: 'Velocita (km/h)', key: 'spd', width: 14 },
+    { header: 'Pitch (°)',       key: 'ptc', width: 12 },
+    { header: 'Marker',          key: 'mk',  width: 20 },
+  ];
+  const hdr = wsLog.getRow(1);
+  hdr.font = { bold: true, color: { argb: 'FFFF9020' } };
+  hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2A2A2A' } };
+  const nRows = parseInt(meta.RECORDS || '0');
+  for (let i = 0; i < nRows; i++) {
+    wsLog.addRow({
+      idx: parseInt((blocks.INDEX || [])[i]) || i,
+      min: mins[i],
+      alt: alt[i],
+      prs: prs[i],
+      spd: spd[i],
+      ptc: ptc[i],
+      mk:  (blocks.MARKER || [])[i] || '',
+    });
+  }
+
+  // ─── Sheet Marker ───
+  if ((blocks.MARKER_INDEX || []).length > 0) {
+    const wsMk = workbook.addWorksheet('Marker');
+    wsMk.columns = [
+      { header: 'Index',         key: 'idx', width: 8  },
+      { header: 'LogIndex',      key: 'li',  width: 12 },
+      { header: 'TempoTrip (s)', key: 'tt',  width: 14 },
+      { header: 'Tipo',          key: 'tp',  width: 16 },
+    ];
+    wsMk.getRow(1).font = { bold: true, color: { argb: 'FFFF9020' } };
+    const nMk = (blocks.MARKER_INDEX || []).length;
+    for (let i = 0; i < nMk; i++) {
+      wsMk.addRow({
+        idx: (blocks.MARKER_INDEX || [])[i] || i,
+        li:  (blocks.MARKER_LOGINDEX || [])[i] || '',
+        tt:  (blocks.MARKER_TEMPOTRIP_S || [])[i] || '',
+        tp:  (blocks.MARKER_TIPO || [])[i] || '',
+      });
+    }
+  }
+
+  // ─── Sheet Meta ───
+  const wsMeta = workbook.addWorksheet('Meta');
+  wsMeta.columns = [
+    { header: 'Chiave', key: 'k', width: 20 },
+    { header: 'Valore', key: 'v', width: 40 },
+  ];
+  wsMeta.getRow(1).font = { bold: true };
+  for (const k of Object.keys(meta)) {
+    wsMeta.addRow({ k, v: meta[k] });
+  }
+
+  // ─── Sheet Grafici (PNG dei Chart.js a video) ───
+  const wsCharts = workbook.addWorksheet('Grafici');
+  wsCharts.getCell('A1').value = 'Grafici BICIU';
+  wsCharts.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFF9020' } };
+
+  const chartIds = [
+    { id: 'chartAlt', title: '🏔 Altitudine (m)',          tall: false },
+    { id: 'chartPrs', title: '🌡 Pressione (mBar)',        tall: false },
+    { id: 'chartSpd', title: '🚴 Velocità (km/h)',         tall: false },
+    { id: 'chartPtc', title: '📐 Pitching (°)',            tall: false },
+    { id: 'chartAll', title: '📊 Tutto sovrapposto',       tall: true  },
+  ];
+
+  let curRow = 3;
+  for (const c of chartIds) {
+    const canvas = $(c.id);
+    if (!canvas) continue;
+    wsCharts.getCell('A' + curRow).value = c.title;
+    wsCharts.getCell('A' + curRow).font = { bold: true, size: 12, color: { argb: 'FFFF9020' } };
+    curRow++;
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64 = dataUrl.split(',')[1];
+    const imgId = workbook.addImage({ base64, extension: 'png' });
+    const h = c.tall ? 420 : 280;
+    wsCharts.addImage(imgId, {
+      tl: { col: 0, row: curRow - 1 },
+      ext: { width: 800, height: h },
+    });
+    curRow += c.tall ? 24 : 17;
+  }
+
+  const buf = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'biciu_export.xlsx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+
+function downloadFile(name, content) {
+  const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+</script>
+</body>
+</html>
